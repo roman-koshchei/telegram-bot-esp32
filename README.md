@@ -7,7 +7,10 @@ Developing pull-based Telegram Bot on ESP32 board with Rust.
 - HTTP Client: https://github.com/drogue-iot/reqwless
 - TLS for HTTP: https://github.com/esp-rs/esp-mbedtls
 - Impl Rust on ESP32 book: https://github.com/ImplFerris/esp32-book
-
+- esp-rs book: https://docs.esp-rs.org/book/
+- Embedded Rust (no_std) on Espressif: https://docs.esp-rs.org/no_std-training/
+- ESP HAL examples: https://github.com/esp-rs/esp-hal/tree/main/examples
+- https://github.com/esp-rs/no_std-training/blob/main/intro/http-client/src/main.rs
 
 ## Goals
 

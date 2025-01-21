@@ -1,4 +1,16 @@
 {
     "rust-analyzer.cargo.allTargets": false,
     "rust-analyzer.cargo.target": "xtensa-esp32-none-elf",
+    "cSpell.words": [
+        "codegen",
+        "dhcpv",
+        "heapless",
+        "igmp",
+        "mbedtls",
+        "println",
+        "reqwless",
+        "smoltcp",
+        "TIMG"
+    ],
+    "editor.inlayHints.enabled": "offUnlessPressed"
 }
