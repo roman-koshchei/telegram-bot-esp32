@@ -1,16 +1,19 @@
 {
-    "rust-analyzer.cargo.allTargets": false,
-    "rust-analyzer.cargo.target": "xtensa-esp32-none-elf",
-    "cSpell.words": [
-        "codegen",
-        "dhcpv",
-        "heapless",
-        "igmp",
-        "mbedtls",
-        "println",
-        "reqwless",
-        "smoltcp",
-        "TIMG"
-    ],
-    "editor.inlayHints.enabled": "offUnlessPressed"
+  "rust-analyzer.cargo.allTargets": false,
+  "rust-analyzer.cargo.target": "xtensa-esp32-none-elf",
+  "rust-analyzer.server.extraEnv": {
+    "RUSTUP_TOOLCHAIN": "stable"
+  },
+  "rust-analyzer.check.extraEnv": {
+    "RUSTUP_TOOLCHAIN": "esp"
+  },
+  "rust-analyzer.cargo.extraEnv": {
+    "RUSTUP_TOOLCHAIN": "esp"
+  },
+  "editor.inlayHints.enabled": "off",
+  "cSpell.words": [
+    "dhcpv",
+    "heapless",
+    "reqwless"
+  ]
 }
