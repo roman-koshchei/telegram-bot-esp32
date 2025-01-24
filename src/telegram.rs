@@ -1,4 +1,5 @@
 use alloc::{format, string::String};
+use heapless::Vec;
 
 pub struct Client<'a> {
     bot_token: &'a str,
@@ -38,4 +39,21 @@ impl<'a> Client<'a> {
             ),
         }
     }
+}
+
+
+#[derive(serde::Deserialize)]
+pub struct TelegramMessage {
+    pub text: heapless::String<256>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct TelegramUpdate {
+    pub update_id: i64,
+    pub message: Option<TelegramMessage>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct TelegramUpdates {
+    pub result: Vec<TelegramUpdate, 10>,
 }

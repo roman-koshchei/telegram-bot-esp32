@@ -26,6 +26,7 @@ use reqwless::{
     headers::ContentType,
     request::{Method, RequestBuilder},
 };
+use telegram::TelegramUpdates;
 
 mod telegram;
 extern crate alloc;
@@ -174,10 +175,11 @@ async fn main(spawner: Spawner) {
         let mut request = client.request(Method::GET, &info.url).await.unwrap();
 
         let response = request.send(&mut buffer).await.unwrap();
+        let body = response.body().read_to_end().await.unwrap();
+        let updates = serde_json_core::from_slice::<TelegramUpdates>(&body);
 
-        let content = core::str::from_utf8(response.body().read_to_end().await.unwrap())
-            .expect("Response body as string");
-        info!("Updates {}", content);
+       
+        // info!("Updates {}", content);
 
         //
     }
