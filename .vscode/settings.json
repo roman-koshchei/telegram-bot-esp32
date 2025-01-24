@@ -12,8 +12,10 @@
   },
   "editor.inlayHints.enabled": "off",
   "cSpell.words": [
+    "COEX",
     "dhcpv",
     "heapless",
-    "reqwless"
+    "reqwless",
+    "Uninit"
   ]
 }

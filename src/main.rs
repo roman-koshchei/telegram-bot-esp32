@@ -1,13 +1,16 @@
 #![no_std]
 #![no_main]
 
+// for more heap
+#![allow(static_mut_refs)]
+
 use core::str::FromStr;
 
 use embassy_executor::Spawner;
 use embassy_net::{
     dns::DnsSocket,
     tcp::client::{TcpClient, TcpClientState},
-    DhcpConfig, Runner, Stack, StackResources,
+    DhcpConfig, Runner, StackResources,
 };
 use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
@@ -32,7 +35,6 @@ load_dotenv!();
 
 const BOT_TOKEN: &str = env!("BOT_TOKEN");
 const CHAT_ID: &str = env!("CHAT_ID");
-const CERT: &[u8] = include_bytes!("./cert.pem"); // env!("CERT");
 
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
@@ -43,6 +45,28 @@ macro_rules! mk_static {
     }};
 }
 
+fn init_heap() {
+    static mut HEAP: core::mem::MaybeUninit<[u8; 72 * 1024]> = core::mem::MaybeUninit::uninit();
+
+    #[link_section = ".dram2_uninit"]
+    static mut HEAP2: core::mem::MaybeUninit<[u8; 64 * 1024]> = core::mem::MaybeUninit::uninit();
+
+    unsafe {
+        esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
+            HEAP.as_mut_ptr() as *mut u8,
+            core::mem::size_of_val(&*core::ptr::addr_of!(HEAP)),
+            esp_alloc::MemoryCapability::Internal.into(),
+        ));
+
+        // COEX needs more RAM - add some more
+        esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
+            HEAP2.as_mut_ptr() as *mut u8,
+            core::mem::size_of_val(&*core::ptr::addr_of!(HEAP2)),
+            esp_alloc::MemoryCapability::Internal.into(),
+        ));
+    }
+}
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
     // generator version: 0.2.2
@@ -50,7 +74,8 @@ async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(112 * 1024);
+    // esp_alloc::heap_allocator!(112 * 1024);
+    init_heap();
 
     esp_println::logger::init_logger_from_env();
 
@@ -60,12 +85,11 @@ async fn main(spawner: Spawner) {
     info!("Embassy initialized!");
 
     let mut rng = esp_hal::rng::Rng::new(peripherals.RNG);
-    let net_seed = random_u64(&mut rng);
 
     let timer1 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let wifi_init = &*mk_static!(
         EspWifiController<'static>,
-        esp_wifi::init(timer1.timer0, rng, peripherals.RADIO_CLK).unwrap()
+        esp_wifi::init(timer1.timer0, rng, peripherals.RADIO_CLK).expect("esp_wifi::init failed")
     );
 
     info!("Wifi initialized!");
@@ -76,20 +100,13 @@ async fn main(spawner: Spawner) {
 
     info!("Wifi is setup!");
 
-    let dhcp_config = DhcpConfig::default();
-    let net_config = embassy_net::Config::dhcpv4(dhcp_config);
+    let net_config = embassy_net::Config::dhcpv4(DhcpConfig::default());
 
-    let (stack, runner) = mk_static!(
-        (
-            embassy_net::Stack<'_>,
-            Runner<'_, WifiDevice<'_, WifiStaDevice>>
-        ),
-        embassy_net::new(
-            wifi_interface,
-            net_config,
-            mk_static!(StackResources<4>, StackResources::<4>::new()),
-            net_seed
-        )
+    let (stack, runner) = embassy_net::new(
+        wifi_interface,
+        net_config,
+        mk_static!(StackResources<3>, StackResources::<3>::new()),
+        random_u64(&mut rng),
     );
 
     info!("Spawning tasks to connect");
@@ -102,34 +119,33 @@ async fn main(spawner: Spawner) {
     info!("Waiting to get IP address...");
     stack.wait_config_up().await;
 
+    info!(
+        "Got IP: {}",
+        stack.config_v4().expect("stack config up").address
+    );
+
+    let dns = DnsSocket::new(stack);
+
+    let tcp_state = TcpClientState::<1, 4096, 4096>::new();
+    let tcp = TcpClient::new(stack, &tcp_state);
+
+    let certificates = reqwless::Certificates {
+        ca_chain: reqwless::X509::pem(concat!(include_str!("./cert.pem"), "\0").as_bytes()).ok(),
+        ..Default::default()
+    };
     let tls = Tls::new(peripherals.SHA)
         .expect("TLS::new with peripherals.SHA failed")
         .with_hardware_rsa(peripherals.RSA);
+    let tls_config: TlsConfig<'_, 4096, 4096> =
+        TlsConfig::new(reqwless::TlsVersion::Tls1_3, certificates, tls.reference());
 
-    access_website(stack, tls).await;
-}
-
-async fn access_website(stack: &Stack<'_>, tls: Tls<'_>) {
-    let dns = DnsSocket::new(*stack);
-    let tcp_state = TcpClientState::<1, 4096, 4096>::new();
-    let tcp = TcpClient::new(*stack, &tcp_state);
-
-    let tls = TlsConfig::new(
-        reqwless::TlsVersion::Tls1_3,
-        reqwless::Certificates {
-            ca_chain: reqwless::X509::pem(CERT).ok(),
-            ..Default::default()
-        },
-        tls.reference(),
-    );
-
-    let mut client = HttpClient::new_with_tls(&tcp, &dns, tls);
+    let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
     let mut buffer = [0u8; 4096];
 
     info!("Preparing sending Telegram message");
 
     let url = telegram::send_message_url(BOT_TOKEN);
-    let body = telegram::send_message_body(CHAT_ID, "hi from esp32", false);
+    let body = telegram::send_message_body(CHAT_ID, "esp32", false);
 
     info!("Forming request");
 
@@ -147,7 +163,7 @@ async fn access_website(stack: &Stack<'_>, tls: Tls<'_>) {
     info!("Got response");
     let res = response.body().read_to_end().await.unwrap();
 
-    let content = core::str::from_utf8(res).unwrap();
+    let content = core::str::from_utf8(res).expect("Response body as string");
     info!("{}", content);
 }
 
@@ -199,7 +215,7 @@ async fn connection_task(mut controller: wifi::WifiController<'static>) {
 }
 
 #[embassy_executor::task]
-async fn net_task(runner: &'static mut Runner<'static, WifiDevice<'static, WifiStaDevice>>) {
+async fn net_task(mut runner: Runner<'static, WifiDevice<'static, WifiStaDevice>>) {
     runner.run().await
 }
 

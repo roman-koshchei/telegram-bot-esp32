@@ -3,10 +3,6 @@ runner = "espflash flash --chip esp32 --port COM1 --monitor"
 
 [env]
 ESP_LOG = "INFO"
-ESP_WIFI_CONFIG_STATIC_TX_BUF_NUM = "64"
-ESP_WIFI_CONFIG_DYNAMIC_TX_BUF_NUM = "128"
-ESP_WIFI_TX_QUEUE_SIZE = "10"
-ESP_WIFI_CONFIG_MAX_BURST_SIZE = "2"
 
 [build]
 rustflags = ["-C", "link-arg=-nostartfiles"]
