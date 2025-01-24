@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-
 // for more heap
 #![allow(static_mut_refs)]
 
@@ -25,7 +24,7 @@ use log::info;
 use reqwless::{
     client::{HttpClient, TlsConfig},
     headers::ContentType,
-    request::RequestBuilder,
+    request::{Method, RequestBuilder},
 };
 
 mod telegram;
@@ -74,7 +73,6 @@ async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    // esp_alloc::heap_allocator!(112 * 1024);
     init_heap();
 
     esp_println::logger::init_logger_from_env();
@@ -144,27 +142,45 @@ async fn main(spawner: Spawner) {
 
     info!("Preparing sending Telegram message");
 
-    let url = telegram::send_message_url(BOT_TOKEN);
-    let body = telegram::send_message_body(CHAT_ID, "esp32", false);
+    let tg = telegram::Client::new(BOT_TOKEN, CHAT_ID);
+    let info = tg.send_message("Rust ESP32 Telegram bot is running", false);
 
     info!("Forming request");
 
-    let mut request = client
-        .request(reqwless::request::Method::POST, &url)
-        .await
-        .unwrap()
-        .body(body.as_bytes())
-        .content_type(ContentType::ApplicationJson);
+    // let mut request = client
+    //     .request(reqwless::request::Method::POST, &info.url)
+    //     .await
+    //     .unwrap()
+    //     .body(info.body.as_bytes())
+    //     .content_type(ContentType::ApplicationJson);
 
     info!("Making request");
 
-    let response = request.send(&mut buffer).await.unwrap();
+    // let _ = request.send(&mut buffer).await.unwrap();
 
     info!("Got response");
-    let res = response.body().read_to_end().await.unwrap();
+    // let res = response.body().read_to_end().await.unwrap();
 
-    let content = core::str::from_utf8(res).expect("Response body as string");
-    info!("{}", content);
+    // let content = core::str::from_utf8(res).expect("Response body as string");
+    // info!("{}", content);
+
+    // let delay = Duration::from_secs(10);
+    // let mut last_automatic_ip = Instant::now() - six_hours;
+
+    let mut offset: i64 = 0;
+    loop {
+        let info = tg.get_updates(offset);
+
+        let mut request = client.request(Method::GET, &info.url).await.unwrap();
+
+        let response = request.send(&mut buffer).await.unwrap();
+
+        let content = core::str::from_utf8(response.body().read_to_end().await.unwrap())
+            .expect("Response body as string");
+        info!("Updates {}", content);
+
+        //
+    }
 }
 
 /**
