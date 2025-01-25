@@ -168,24 +168,24 @@ async fn main(spawner: Spawner) {
     let mut offset: i64 = 0;
     let mut updates_failed_in_row = 0;
     loop {
-        if updates_failed_in_row > 5 {
+        if updates_failed_in_row > 10 {
             break;
         }
         Timer::after_millis(500).await;
-        
-        info!("MAIN LOOP: Getting updates");
+
+        // info!("MAIN LOOP: Getting updates");
         let updates = match tg.get_updates(offset).await {
-            Some(x) =>  {
+            Some(x) => {
                 updates_failed_in_row = 0;
                 x
-            },
+            }
             None => {
                 error!("MAIN LOOP: Can't get updates");
                 updates_failed_in_row += 1;
                 continue;
             }
         };
-        info!("MAIN LOOP: Got updates {}", updates.result.len());
+        // info!("MAIN LOOP: Got updates {}", updates.result.len());
 
         if !updates.result.is_empty() {
             blink(&mut led).await;
@@ -193,15 +193,13 @@ async fn main(spawner: Spawner) {
 
         for update in updates.result {
             if let Some(message) = update.message {
-                if message.text.starts_with('/') {
-                    if message.text == "/led" {
+                if let Some(command) = message.text.strip_prefix('/') {
+                    if command == "led" {
                         led.toggle();
                         // send_ip_message(&tg_config);
-                    }
-
-                    if let Some(content) = message.text.strip_prefix("/echo") {
+                    } else if let Some(content) = command.strip_prefix("echo") {
                         if !(tg.send_message(content, false).await) {
-                            log::error!("Wake up message wasn't sent");
+                            log::error!("Message wasn't sent");
                         } else {
                             log::info!("Sent /echo");
                         }
@@ -211,8 +209,6 @@ async fn main(spawner: Spawner) {
 
             offset = update.update_id + 1;
         }
-    
-        
     }
 }
 

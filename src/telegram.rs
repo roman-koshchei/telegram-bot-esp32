@@ -1,6 +1,5 @@
 use alloc::format;
 use embedded_io_async::{Read, Write};
-use heapless::Vec;
 use log::info;
 use reqwless::{client::HttpResource, headers::ContentType, request::RequestBuilder as _};
 use serde_json_core as _;
@@ -26,7 +25,7 @@ where
             http,
             bot_token,
             chat_id,
-            response_buffer: [0; 8196]
+            response_buffer: [0; 8196],
         }
     }
 
@@ -45,7 +44,7 @@ where
             &mut body_buffer,
         )
         .expect("Body Buffer is too small"); // TODO: rework without panic
-        info!("TG: send_message request body size: {}", size);
+        // info!("TG: send_message request body size: {}", size);
 
         let res = self
             .http
@@ -54,19 +53,24 @@ where
             .content_type(ContentType::ApplicationJson)
             .send(&mut self.response_buffer)
             .await;
-        log::info!("TG: send_message response");
+        // log::info!("TG: send_message response");
 
         res.is_ok_and(|x| x.status.is_successful())
     }
 
     pub async fn get_updates(&mut self, offset: i64) -> Option<TelegramUpdates> {
         let path = format!("/bot{}/getUpdates?offset={}", self.bot_token, offset);
-        
-        let response = self.http.get(&path).send(&mut self.response_buffer).await.ok()?;
-        log::info!("TG: get_updates got response");
+
+        let response = self
+            .http
+            .get(&path)
+            .send(&mut self.response_buffer)
+            .await
+            .ok()?;
+        // log::info!("TG: get_updates got response");
 
         let body = response.body().read_to_end().await.ok()?;
-        log::info!("TG: get_updates response body size: {}", body.len());
+        // log::info!("TG: get_updates response body size: {}", body.len());
 
         let serialized = serde_json_core::from_slice::<TelegramUpdates>(body)
             .expect("TG: get_updates serialize failed");
@@ -85,7 +89,7 @@ struct SendMessageBody<'a> {
 #[derive(serde::Deserialize)]
 pub struct TelegramMessage {
     // pub text: heapless::String<256>,
-    // f*cking serde can't cut string to 256 size. 
+    // f*cking serde can't cut string to 256 size.
     // it just errors. stupid sh*t
     pub text: alloc::string::String,
 }
