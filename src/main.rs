@@ -20,11 +20,11 @@ use esp_wifi::{
     EspWifiController,
 };
 use load_dotenv::load_dotenv;
-use log::info;
+use log::{info, warn};
 use reqwless::{
     client::{HttpClient, TlsConfig},
     headers::ContentType,
-    request::{Method, RequestBuilder},
+    request::RequestBuilder,
 };
 use telegram::TelegramUpdates;
 
@@ -143,21 +143,32 @@ async fn main(spawner: Spawner) {
 
     info!("Preparing sending Telegram message");
 
-    let tg = telegram::Client::new(BOT_TOKEN, CHAT_ID);
-    let info = tg.send_message("Rust ESP32 Telegram bot is running", false);
+    const MAX_ATTEMPTS: u8 = 7;
+    let mut connection = {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match client.resource(telegram::BASE_URL).await {
+                Ok(value) => break Ok(value),
+                Err(err) if attempt < MAX_ATTEMPTS => {
+                    log::warn!("Connection attempt {} failed. Retrying", attempt);
+                    Timer::after_millis(50).await
+                }
+                Err(err) => break Err(err),
+            }
+        }
+    }
+    .expect("Connection to Telegram failed");
 
-    info!("Forming request");
+    let mut tg = telegram::Client::new(connection, BOT_TOKEN, CHAT_ID);
 
-    let mut connection = client.resource(telegram::BASE_URL).await.unwrap();
-
-    let _ = connection
-        .post(&info.path)
-        .body(info.body.as_bytes())
-        .content_type(ContentType::ApplicationJson)
-        .send(&mut buffer)
+    if tg
+        .send_message("Rust ESP32 Telegram bot is running", false)
         .await
-        .expect("Post request didn't complete");
-    info!("Sent wake up message");
+        == false
+    {
+        log::error!("Wake up message wasn't sent");
+    }
 
     // let delay = Duration::from_secs(10);
     // let mut last_automatic_ip = Instant::now() - six_hours;
@@ -166,17 +177,18 @@ async fn main(spawner: Spawner) {
 
     let mut offset: i64 = 0;
     loop {
-        let info = tg.get_updates(offset);
+        let updates = match tg.get_updates(offset).await {
+            Some(x) => x,
+            None => {
+                continue;
+            }
+        };
 
-        let response = connection.get(&info.path).send(&mut buffer).await.unwrap();
-        let body = response.body().read_to_end().await.unwrap();
-        let updates = serde_json_core::from_slice::<TelegramUpdates>(&body).unwrap();
-
-        if !updates.0.result.is_empty() {
+        if !updates.result.is_empty() {
             blink(&mut led).await;
         }
 
-        for update in updates.0.result {
+        for update in updates.result {
             if let Some(message) = update.message {
                 if message.text.starts_with('/') {
                     if message.text == "/led" {
@@ -185,25 +197,17 @@ async fn main(spawner: Spawner) {
                     }
 
                     if let Some(content) = message.text.strip_prefix("/echo") {
-                        let info = tg.send_message(content, false);
-
-                        let _ = connection
-                            .post(&info.path)
-                            .body(info.body.as_bytes())
-                            .content_type(ContentType::ApplicationJson)
-                            .send(&mut buffer)
-                            .await
-                            .expect("Post request didn't complete");
-                        info!("Sent /echo");
+                        if tg.send_message(content, false).await == false {
+                            log::error!("Wake up message wasn't sent");
+                        } else {
+                            log::info!("Sent /echo");
+                        }
                     }
                 }
             }
 
             offset = update.update_id + 1;
         }
-        // info!("Updates count {}", content);
-
-        //
     }
 }
 
