@@ -148,22 +148,16 @@ async fn main(spawner: Spawner) {
 
     info!("Forming request");
 
-    // let mut request = client
-    //     .request(reqwless::request::Method::POST, &info.url)
-    //     .await
-    //     .unwrap()
-    //     .body(info.body.as_bytes())
-    //     .content_type(ContentType::ApplicationJson);
+    let mut connection = client.resource(telegram::BASE_URL).await.unwrap();
 
-    info!("Making request");
-
-    // let _ = request.send(&mut buffer).await.unwrap();
-
-    info!("Got response");
-    // let res = response.body().read_to_end().await.unwrap();
-
-    // let content = core::str::from_utf8(res).expect("Response body as string");
-    // info!("{}", content);
+    let _ = connection
+        .post(&info.path)
+        .body(info.body.as_bytes())
+        .content_type(ContentType::ApplicationJson)
+        .send(&mut buffer)
+        .await
+        .expect("Post request didn't complete");
+    info!("Sent wake up message");
 
     // let delay = Duration::from_secs(10);
     // let mut last_automatic_ip = Instant::now() - six_hours;
@@ -174,9 +168,7 @@ async fn main(spawner: Spawner) {
     loop {
         let info = tg.get_updates(offset);
 
-        let mut request = client.request(Method::GET, &info.url).await.unwrap();
-
-        let response = request.send(&mut buffer).await.unwrap();
+        let response = connection.get(&info.path).send(&mut buffer).await.unwrap();
         let body = response.body().read_to_end().await.unwrap();
         let updates = serde_json_core::from_slice::<TelegramUpdates>(&body).unwrap();
 
@@ -190,8 +182,19 @@ async fn main(spawner: Spawner) {
                     if message.text == "/led" {
                         led.toggle();
                         // send_ip_message(&tg_config);
-                    } else if message.text == "/system" {
-                        // system_command(&mut sys, &tg_config);
+                    }
+
+                    if let Some(content) = message.text.strip_prefix("/echo") {
+                        let info = tg.send_message(content, false);
+
+                        let _ = connection
+                            .post(&info.path)
+                            .body(info.body.as_bytes())
+                            .content_type(ContentType::ApplicationJson)
+                            .send(&mut buffer)
+                            .await
+                            .expect("Post request didn't complete");
+                        info!("Sent /echo");
                     }
                 }
             }
