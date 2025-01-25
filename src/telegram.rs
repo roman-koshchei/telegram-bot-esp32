@@ -85,7 +85,9 @@ struct SendMessageBody<'a> {
 #[derive(serde::Deserialize)]
 pub struct TelegramMessage {
     // pub text: heapless::String<256>,
-    pub text: heapless::String<256>,
+    // f*cking serde can't cut string to 256 size. 
+    // it just errors. stupid sh*t
+    pub text: alloc::string::String,
 }
 
 #[derive(serde::Deserialize)]
