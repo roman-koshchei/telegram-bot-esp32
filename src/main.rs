@@ -20,13 +20,8 @@ use esp_wifi::{
     EspWifiController,
 };
 use load_dotenv::load_dotenv;
-use log::{info, warn};
-use reqwless::{
-    client::{HttpClient, TlsConfig},
-    headers::ContentType,
-    request::RequestBuilder,
-};
-use telegram::TelegramUpdates;
+use log::info;
+use reqwless::client::{HttpClient, TlsConfig};
 
 mod telegram;
 extern crate alloc;
@@ -139,18 +134,17 @@ async fn main(spawner: Spawner) {
         TlsConfig::new(reqwless::TlsVersion::Tls1_3, certificates, tls.reference());
 
     let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
-    let mut buffer = [0u8; 4096];
 
     info!("Preparing sending Telegram message");
 
     const MAX_ATTEMPTS: u8 = 7;
-    let mut connection = {
+    let connection = {
         let mut attempt = 0;
         loop {
             attempt += 1;
             match client.resource(telegram::BASE_URL).await {
                 Ok(value) => break Ok(value),
-                Err(err) if attempt < MAX_ATTEMPTS => {
+                Err(_) if attempt < MAX_ATTEMPTS => {
                     log::warn!("Connection attempt {} failed. Retrying", attempt);
                     Timer::after_millis(50).await
                 }
@@ -162,10 +156,9 @@ async fn main(spawner: Spawner) {
 
     let mut tg = telegram::Client::new(connection, BOT_TOKEN, CHAT_ID);
 
-    if tg
+    if !(tg
         .send_message("Rust ESP32 Telegram bot is running", false)
-        .await
-        == false
+        .await)
     {
         log::error!("Wake up message wasn't sent");
     }
@@ -197,7 +190,7 @@ async fn main(spawner: Spawner) {
                     }
 
                     if let Some(content) = message.text.strip_prefix("/echo") {
-                        if tg.send_message(content, false).await == false {
+                        if !(tg.send_message(content, false).await) {
                             log::error!("Wake up message wasn't sent");
                         } else {
                             log::info!("Sent /echo");

@@ -1,8 +1,7 @@
-use alloc::{format, string::String};
+use alloc::format;
 use embedded_io_async::{Read, Write};
 use heapless::Vec;
 use reqwless::{client::HttpResource, headers::ContentType, request::RequestBuilder as _};
-use serde::de::value;
 
 pub struct Client<'a, C>
 where
@@ -13,14 +12,7 @@ where
     chat_id: &'a str,
 }
 
-pub struct PostRequest {
-    pub path: String,
-    pub body: String,
-}
 
-pub struct GetRequest {
-    pub path: String,
-}
 
 pub const BASE_URL: &str = "https://api.telegram.org";
 
@@ -61,7 +53,7 @@ where
             .send(&mut res_buffer)
             .await;
 
-        return res.is_ok_and(|x| x.status.is_successful());
+        res.is_ok_and(|x| x.status.is_successful())
     }
 
     pub async fn get_updates(&mut self, offset: i64) -> Option<TelegramUpdates> {
