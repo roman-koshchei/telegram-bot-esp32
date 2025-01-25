@@ -1,7 +1,9 @@
 use alloc::format;
 use embedded_io_async::{Read, Write};
 use heapless::Vec;
+use log::info;
 use reqwless::{client::HttpResource, headers::ContentType, request::RequestBuilder as _};
+use serde_json_core as _;
 
 pub struct Client<'a, C>
 where
@@ -10,9 +12,8 @@ where
     http: reqwless::client::HttpResource<'a, C>,
     bot_token: &'a str,
     chat_id: &'a str,
+    response_buffer: [u8; 8196],
 }
-
-
 
 pub const BASE_URL: &str = "https://api.telegram.org";
 
@@ -25,6 +26,7 @@ where
             http,
             bot_token,
             chat_id,
+            response_buffer: [0; 8196]
         }
     }
 
@@ -32,8 +34,8 @@ where
         let parse_mode = if is_html { "HTML" } else { "MarkdownV2" };
         let path = format!("/bot{}/sendMessage", self.bot_token);
 
-        let mut body_buffer = [0u8; 4096];
-        let _ = serde_json_core::ser::to_slice(
+        let mut body_buffer = [0; 2048];
+        let size = serde_json_core::ser::to_slice(
             &SendMessageBody {
                 chat_id: self.chat_id,
                 text,
@@ -43,28 +45,32 @@ where
             &mut body_buffer,
         )
         .expect("Body Buffer is too small"); // TODO: rework without panic
+        info!("TG: send_message request body size: {}", size);
 
-        let mut res_buffer = [0u8; 4096];
         let res = self
             .http
             .post(&path)
             .body(&body_buffer[..])
             .content_type(ContentType::ApplicationJson)
-            .send(&mut res_buffer)
+            .send(&mut self.response_buffer)
             .await;
+        log::info!("TG: send_message response");
 
         res.is_ok_and(|x| x.status.is_successful())
     }
 
     pub async fn get_updates(&mut self, offset: i64) -> Option<TelegramUpdates> {
         let path = format!("/bot{}/getUpdates?offset={}", self.bot_token, offset);
+        
+        let response = self.http.get(&path).send(&mut self.response_buffer).await.ok()?;
+        log::info!("TG: get_updates got response");
 
-        let mut buffer = [0u8; 4096];
-        let response = self.http.get(&path).send(&mut buffer).await.ok()?;
         let body = response.body().read_to_end().await.ok()?;
-        serde_json_core::from_slice::<TelegramUpdates>(body)
-            .map(|x| x.0)
-            .ok()
+        log::info!("TG: get_updates response body size: {}", body.len());
+
+        let serialized = serde_json_core::from_slice::<TelegramUpdates>(body)
+            .expect("TG: get_updates serialize failed");
+        Some(serialized.0)
     }
 }
 
@@ -78,6 +84,7 @@ struct SendMessageBody<'a> {
 
 #[derive(serde::Deserialize)]
 pub struct TelegramMessage {
+    // pub text: heapless::String<256>,
     pub text: heapless::String<256>,
 }
 
@@ -89,5 +96,5 @@ pub struct TelegramUpdate {
 
 #[derive(serde::Deserialize)]
 pub struct TelegramUpdates {
-    pub result: Vec<TelegramUpdate, 10>,
+    pub result: alloc::vec::Vec<TelegramUpdate>,
 }

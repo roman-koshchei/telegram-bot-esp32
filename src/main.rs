@@ -20,7 +20,7 @@ use esp_wifi::{
     EspWifiController,
 };
 use load_dotenv::load_dotenv;
-use log::info;
+use log::{error, info, warn};
 use reqwless::client::{HttpClient, TlsConfig};
 
 mod telegram;
@@ -41,7 +41,7 @@ macro_rules! mk_static {
 }
 
 fn init_heap() {
-    static mut HEAP: core::mem::MaybeUninit<[u8; 72 * 1024]> = core::mem::MaybeUninit::uninit();
+    static mut HEAP: core::mem::MaybeUninit<[u8; 80 * 1024]> = core::mem::MaybeUninit::uninit();
 
     #[link_section = ".dram2_uninit"]
     static mut HEAP2: core::mem::MaybeUninit<[u8; 64 * 1024]> = core::mem::MaybeUninit::uninit();
@@ -89,8 +89,7 @@ async fn main(spawner: Spawner) {
     info!("Wifi initialized!");
 
     let wifi = peripherals.WIFI;
-    let (wifi_interface, controller) =
-        esp_wifi::wifi::new_with_mode(wifi_init, wifi, WifiStaDevice).unwrap();
+    let (wifi_interface, controller) = wifi::new_with_mode(wifi_init, wifi, WifiStaDevice).unwrap();
 
     info!("Wifi is setup!");
 
@@ -107,14 +106,11 @@ async fn main(spawner: Spawner) {
     spawner.spawn(connection_task(controller)).ok();
     spawner.spawn(net_task(runner)).ok();
 
-    info!("Waiting to link stack...");
     stack.wait_link_up().await;
-
-    info!("Waiting to get IP address...");
+    info!("WIFI: Waiting to get IP address...");
     stack.wait_config_up().await;
-
     info!(
-        "Got IP: {}",
+        "WIFI: Got IP {}",
         stack.config_v4().expect("stack config up").address
     );
 
@@ -130,38 +126,39 @@ async fn main(spawner: Spawner) {
     let tls = Tls::new(peripherals.SHA)
         .expect("TLS::new with peripherals.SHA failed")
         .with_hardware_rsa(peripherals.RSA);
-    let tls_config: TlsConfig<'_, 4096, 4096> =
-        TlsConfig::new(reqwless::TlsVersion::Tls1_3, certificates, tls.reference());
+    let tls_config = TlsConfig::new(reqwless::TlsVersion::Tls1_3, certificates, tls.reference());
 
     let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
-
-    info!("Preparing sending Telegram message");
 
     const MAX_ATTEMPTS: u8 = 7;
     let connection = {
         let mut attempt = 0;
         loop {
             attempt += 1;
+            log::info!("HTTP: Trying to connect to Telegram, attempt {}", attempt);
             match client.resource(telegram::BASE_URL).await {
                 Ok(value) => break Ok(value),
                 Err(_) if attempt < MAX_ATTEMPTS => {
-                    log::warn!("Connection attempt {} failed. Retrying", attempt);
+                    log::warn!("HTTP: Connection attempt {} failed. Retrying", attempt);
                     Timer::after_millis(50).await
                 }
                 Err(err) => break Err(err),
             }
         }
     }
-    .expect("Connection to Telegram failed");
+    .expect("HTTP: Connection to Telegram failed");
+    info!("HTTP: Connection is established");
 
     let mut tg = telegram::Client::new(connection, BOT_TOKEN, CHAT_ID);
 
-    if !(tg
-        .send_message("Rust ESP32 Telegram bot is running", false)
-        .await)
-    {
-        log::error!("Wake up message wasn't sent");
-    }
+    // if !(tg
+    //     .send_message("Rust ESP32 Telegram bot is running", false)
+    //     .await)
+    // {
+    //     log::error!("MAIN: Wake up message wasn't sent");
+    // } else {
+    //     log::info!("MAIN: welcome message is sent");
+    // }
 
     // let delay = Duration::from_secs(10);
     // let mut last_automatic_ip = Instant::now() - six_hours;
@@ -169,13 +166,26 @@ async fn main(spawner: Spawner) {
     let mut led = gpio::Output::new(peripherals.GPIO2, gpio::Level::Low);
 
     let mut offset: i64 = 0;
+    let mut updates_failed_in_row = 0;
     loop {
+        if updates_failed_in_row > 5 {
+            break;
+        }
+        Timer::after_millis(500).await;
+        
+        info!("MAIN LOOP: Getting updates");
         let updates = match tg.get_updates(offset).await {
-            Some(x) => x,
+            Some(x) =>  {
+                updates_failed_in_row = 0;
+                x
+            },
             None => {
+                error!("MAIN LOOP: Can't get updates");
+                updates_failed_in_row += 1;
                 continue;
             }
         };
+        info!("MAIN LOOP: Got updates {}", updates.result.len());
 
         if !updates.result.is_empty() {
             blink(&mut led).await;
@@ -201,6 +211,8 @@ async fn main(spawner: Spawner) {
 
             offset = update.update_id + 1;
         }
+    
+        
     }
 }
 
@@ -224,15 +236,14 @@ reconnect if the connection is lost or not started.
 */
 #[embassy_executor::task]
 async fn connection_task(mut controller: wifi::WifiController<'static>) {
-    info!("Start connection task");
-    info!("Device capabilities: {:?}", controller.capabilities());
-
+    info!("WIFI: Start connection task");
     loop {
         if wifi::wifi_state() == wifi::WifiState::StaConnected {
             // wait until we're no longer connected
             controller
                 .wait_for_event(wifi::WifiEvent::StaDisconnected)
                 .await;
+            log::warn!("WIFI: Disconnected");
             Timer::after(Duration::from_millis(5000)).await
         }
 
@@ -248,17 +259,16 @@ async fn connection_task(mut controller: wifi::WifiController<'static>) {
                 ..Default::default()
             });
             controller.set_configuration(&client_config).unwrap();
-            info!("Starting wifi");
             controller.start_async().await.unwrap();
-            info!("Wifi started!");
+            info!("WIFI: Started!");
         }
-        info!("About to connect...");
 
+        info!("WIFI: About to connect...");
         match controller.connect_async().await {
-            Ok(_) => info!("Wifi connected!"),
+            Ok(_) => info!("WIFI: Wifi connected!"),
             Err(e) => {
-                info!("Failed to connect to wifi: {e:?}");
-                Timer::after(Duration::from_millis(5000)).await
+                warn!("WIFI: Failed to connect to wifi: {e:?}");
+                Timer::after(Duration::from_millis(500)).await
             }
         }
     }
