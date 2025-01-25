@@ -41,7 +41,6 @@ impl<'a> Client<'a> {
     }
 }
 
-
 #[derive(serde::Deserialize)]
 pub struct TelegramMessage {
     pub text: heapless::String<256>,

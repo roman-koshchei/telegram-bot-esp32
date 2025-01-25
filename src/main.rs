@@ -13,7 +13,7 @@ use embassy_net::{
 };
 use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
-use esp_hal::clock::CpuClock;
+use esp_hal::{clock::CpuClock, gpio};
 use esp_mbedtls::Tls;
 use esp_wifi::{
     wifi::{self, WifiDevice, WifiStaDevice},
@@ -168,6 +168,8 @@ async fn main(spawner: Spawner) {
     // let delay = Duration::from_secs(10);
     // let mut last_automatic_ip = Instant::now() - six_hours;
 
+    let mut led = gpio::Output::new(peripherals.GPIO2, gpio::Level::Low);
+
     let mut offset: i64 = 0;
     loop {
         let info = tg.get_updates(offset);
@@ -176,13 +178,43 @@ async fn main(spawner: Spawner) {
 
         let response = request.send(&mut buffer).await.unwrap();
         let body = response.body().read_to_end().await.unwrap();
-        let updates = serde_json_core::from_slice::<TelegramUpdates>(&body);
+        let updates = serde_json_core::from_slice::<TelegramUpdates>(&body).unwrap();
 
-       
-        // info!("Updates {}", content);
+        if !updates.0.result.is_empty() {
+            blink(&mut led).await;
+        }
+
+        for update in updates.0.result {
+            if let Some(message) = update.message {
+                if message.text.starts_with('/') {
+                    if message.text == "/led" {
+                        led.toggle();
+                        // send_ip_message(&tg_config);
+                    } else if message.text == "/system" {
+                        // system_command(&mut sys, &tg_config);
+                    }
+                }
+            }
+
+            offset = update.update_id + 1;
+        }
+        // info!("Updates count {}", content);
 
         //
     }
+}
+
+async fn blink(output: &mut gpio::Output<'_>) {
+    let level = output.output_level();
+
+    output.set_low();
+    Timer::after_millis(50).await;
+    output.set_high();
+    Timer::after_millis(100).await;
+    output.set_low();
+    Timer::after_millis(50).await;
+
+    output.set_level(level);
 }
 
 /**
