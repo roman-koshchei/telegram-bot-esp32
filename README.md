@@ -12,10 +12,6 @@ Developing pull-based Telegram Bot on ESP32 board with Rust.
 - ESP HAL examples: https://github.com/esp-rs/esp-hal/tree/main/examples
 - https://github.com/esp-rs/no_std-training/blob/main/intro/http-client/src/main.rs
 
-## Bugs
-
-- Connection Abort happens after some time, it should start reconnection
-
 ## Goals
 
 Here are couple of things I need to make to work:
@@ -28,7 +24,7 @@ Commands:
 
 - [ ] /ip - returns public ip of my router
 - [x] /led - toggle blinking led on esp32
-- [ ] /echo {message} - send back message
+- [x] /echo {message} - send back message
 - [ ] /remind {seconds/minutes/hours} {message} - send message in x seconds/minutes/hours
 
 Whenever we receive command we should blink 3 times the led and then return into initial state.

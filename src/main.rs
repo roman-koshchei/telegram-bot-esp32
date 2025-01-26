@@ -20,8 +20,8 @@ use esp_wifi::{
     EspWifiController,
 };
 use load_dotenv::load_dotenv;
-use log::{error, info, warn};
-use reqwless::client::{HttpClient, TlsConfig};
+use reqwless::client::TlsConfig;
+use telegram::SendMessageError;
 
 mod telegram;
 extern crate alloc;
@@ -76,7 +76,7 @@ async fn main(spawner: Spawner) {
     let timer0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timer0.timer0);
 
-    info!("Embassy initialized!");
+    log::info!("Embassy initialized!");
 
     let mut rng = esp_hal::rng::Rng::new(peripherals.RNG);
 
@@ -86,12 +86,12 @@ async fn main(spawner: Spawner) {
         esp_wifi::init(timer1.timer0, rng, peripherals.RADIO_CLK).expect("esp_wifi::init failed")
     );
 
-    info!("Wifi initialized!");
+    log::info!("Wifi initialized!");
 
     let wifi = peripherals.WIFI;
     let (wifi_interface, controller) = wifi::new_with_mode(wifi_init, wifi, WifiStaDevice).unwrap();
 
-    info!("Wifi is setup!");
+    log::info!("Wifi is setup!");
 
     let net_config = embassy_net::Config::dhcpv4(DhcpConfig::default());
 
@@ -102,17 +102,15 @@ async fn main(spawner: Spawner) {
         random_u64(&mut rng),
     );
 
-    info!("Spawning tasks to connect");
+    log::info!("Spawning tasks to connect");
     spawner.spawn(connection_task(controller)).ok();
     spawner.spawn(net_task(runner)).ok();
 
     stack.wait_link_up().await;
-    info!("WIFI: Waiting to get IP address...");
+    log::info!("WIFI: Waiting to get IP address...");
     stack.wait_config_up().await;
-    info!(
-        "WIFI: Got IP {}",
-        stack.config_v4().expect("stack config up").address
-    );
+    let ip = alloc::format!("{}", stack.config_v4().expect("stack config up").address);
+    log::info!("WIFI: Got IP {}", ip);
 
     let dns = DnsSocket::new(stack);
 
@@ -133,40 +131,28 @@ async fn main(spawner: Spawner) {
         tls.reference(),
     );
 
-    let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
+    // let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
 
-    const MAX_ATTEMPTS: u8 = 7;
-    let connection = {
-        let mut attempt = 0;
-        loop {
-            attempt += 1;
-            log::info!("HTTP: Trying to connect to Telegram, attempt {}", attempt);
-            match client.resource(telegram::HOSTNAME).await {
-                Ok(value) => break Ok(value),
-                Err(_) if attempt < MAX_ATTEMPTS => {
-                    log::warn!("HTTP: Connection attempt {} failed. Retrying", attempt);
-                    Timer::after_millis(50).await
-                }
-                Err(err) => break Err(err),
-            }
-        }
-    }
-    .expect("HTTP: Connection to Telegram failed");
-    info!("HTTP: Connection is established");
-
-    let mut tg = telegram::Client::new(connection, BOT_TOKEN, CHAT_ID);
-
-    // if !(tg
-    //     .send_message("Rust ESP32 Telegram bot is running", false)
-    //     .await)
-    // {
-    //     log::error!("MAIN: Wake up message wasn't sent");
-    // } else {
-    //     log::info!("MAIN: welcome message is sent");
+    // const MAX_ATTEMPTS: u8 = 7;
+    // let connection = {
+    //     let mut attempt = 0;
+    //     loop {
+    //         attempt += 1;
+    //         log::info!("HTTP: Trying to connect to Telegram, attempt {}", attempt);
+    //         match client.resource(telegram::HOSTNAME).await {
+    //             Ok(value) => break Ok(value),
+    //             Err(_) if attempt < MAX_ATTEMPTS => {
+    //                 log::warn!("HTTP: Connection attempt {} failed. Retrying", attempt);
+    //                 Timer::after_millis(50).await
+    //             }
+    //             Err(err) => break Err(err),
+    //         }
+    //     }
     // }
+    // .expect("HTTP: Connection to Telegram failed");
+    // log::info!("HTTP: Connection is established");
 
-    // let delay = Duration::from_secs(10);
-    // let mut last_automatic_ip = Instant::now() - six_hours;
+    let mut tg = telegram::Client::new(&tcp, &dns, tls_config, BOT_TOKEN, CHAT_ID);
 
     let mut led = gpio::Output::new(peripherals.GPIO2, gpio::Level::Low);
 
@@ -178,41 +164,70 @@ async fn main(spawner: Spawner) {
         }
         Timer::after_millis(500).await;
 
-        // info!("MAIN LOOP: Getting updates");
+        // log::info!("MAIN LOOP: Getting updates");
         let updates = match tg.get_updates(offset).await {
-            Some(x) => {
+            Ok(value) => {
                 updates_failed_in_row = 0;
-                x
+                value
             }
-            None => {
-                error!("MAIN LOOP: Can't get updates");
+            Err(_) => {
+                log::error!("MAIN LOOP: Can't get updates");
                 updates_failed_in_row += 1;
                 continue;
             }
         };
-        // info!("MAIN LOOP: Got updates {}", updates.result.len());
-
-        if !updates.result.is_empty() {
-            blink(&mut led).await;
-        }
 
         for update in updates.result {
             if let Some(message) = update.message {
                 if let Some(command) = message.text.strip_prefix('/') {
                     if command == "led" {
+                        log::info!("COMMAND: /led");
+
                         led.toggle();
-                        // send_ip_message(&tg_config);
+                    } else if command == "ip" {
+                        log::info!("COMMAND: /ip");
+
+                        if let Err(err) = tg.send_message(&alloc::format!("IP: <span class='tg-spoiler'>{}</span>", ip), true).await {
+                            match err {
+                                SendMessageError::TooSmallBodyBuffer => {
+                                    log::error!("send_message buffer should be increased")
+                                }
+                                SendMessageError::StatusCodeIsNotSuccessful(status) => {
+                                        log::error!("Status code isn't successful: {}", status.0);
+
+                                }
+                                SendMessageError::ReqwlessError(err) => {
+                                    if let reqwless::Error::ConnectionAborted = err {
+                                        log::error!("We need to reconnect");
+                                    }
+                                }
+                            }
+                        };
                     } else if let Some(content) = command.strip_prefix("echo") {
-                        if !(tg.send_message(content, false).await) {
-                            log::error!("Message wasn't sent");
-                        } else {
-                            log::info!("Sent /echo");
+                        log::info!("COMMAND: /echo");
+
+                        if let Err(err) = tg.send_message(content, false).await {
+                            match err {
+                                SendMessageError::TooSmallBodyBuffer => {
+                                    log::error!("send_message buffer should be increased")
+                                }
+                      SendMessageError::StatusCodeIsNotSuccessful(status) => {
+                                        log::error!("Status code isn't successful: {}", status.0);
+
+                                }
+                                SendMessageError::ReqwlessError(err) => {
+                                    if let reqwless::Error::ConnectionAborted = err {
+                                        log::error!("We need to reconnect");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
 
             offset = update.update_id + 1;
+            blink(&mut led).await;
         }
     }
 }
@@ -237,7 +252,7 @@ reconnect if the connection is lost or not started.
 */
 #[embassy_executor::task]
 async fn connection_task(mut controller: wifi::WifiController<'static>) {
-    info!("WIFI: Start connection task");
+    log::info!("WIFI: Start connection task");
     loop {
         if wifi::wifi_state() == wifi::WifiState::StaConnected {
             // wait until we're no longer connected
@@ -261,14 +276,14 @@ async fn connection_task(mut controller: wifi::WifiController<'static>) {
             });
             controller.set_configuration(&client_config).unwrap();
             controller.start_async().await.unwrap();
-            info!("WIFI: Started!");
+            log::info!("WIFI: Started!");
         }
 
-        info!("WIFI: About to connect...");
+        log::info!("WIFI: About to connect...");
         match controller.connect_async().await {
-            Ok(_) => info!("WIFI: Wifi connected!"),
+            Ok(_) => log::info!("WIFI: Wifi connected!"),
             Err(e) => {
-                warn!("WIFI: Failed to connect to wifi: {e:?}");
+                log::warn!("WIFI: Failed to connect to wifi: {e:?}");
                 Timer::after(Duration::from_millis(500)).await
             }
         }
