@@ -1949,6 +1949,7 @@ dependencies = [
  "embassy-time",
  "embedded-io",
  "embedded-io-async",
+ "embedded-nal-async",
  "esp-alloc",
  "esp-backtrace",
  "esp-hal",

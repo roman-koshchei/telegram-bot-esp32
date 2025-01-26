@@ -119,14 +119,19 @@ async fn main(spawner: Spawner) {
     let tcp_state = TcpClientState::<1, 4096, 4096>::new();
     let tcp = TcpClient::new(stack, &tcp_state);
 
-    let certificates = reqwless::Certificates {
-        ca_chain: reqwless::X509::pem(concat!(include_str!("./cert.pem"), "\0").as_bytes()).ok(),
-        ..Default::default()
-    };
     let tls = Tls::new(peripherals.SHA)
         .expect("TLS::new with peripherals.SHA failed")
         .with_hardware_rsa(peripherals.RSA);
-    let tls_config = TlsConfig::new(reqwless::TlsVersion::Tls1_3, certificates, tls.reference());
+
+    let tls_config = TlsConfig::new(
+        reqwless::TlsVersion::Tls1_3,
+        reqwless::Certificates {
+            ca_chain: reqwless::X509::pem(concat!(include_str!("./cert.pem"), "\0").as_bytes())
+                .ok(),
+            ..Default::default()
+        },
+        tls.reference(),
+    );
 
     let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
 
@@ -136,7 +141,7 @@ async fn main(spawner: Spawner) {
         loop {
             attempt += 1;
             log::info!("HTTP: Trying to connect to Telegram, attempt {}", attempt);
-            match client.resource(telegram::BASE_URL).await {
+            match client.resource(telegram::HOSTNAME).await {
                 Ok(value) => break Ok(value),
                 Err(_) if attempt < MAX_ATTEMPTS => {
                     log::warn!("HTTP: Connection attempt {} failed. Retrying", attempt);
@@ -240,7 +245,7 @@ async fn connection_task(mut controller: wifi::WifiController<'static>) {
                 .wait_for_event(wifi::WifiEvent::StaDisconnected)
                 .await;
             log::warn!("WIFI: Disconnected");
-            Timer::after(Duration::from_millis(5000)).await
+            Timer::after(Duration::from_millis(500)).await
         }
 
         if !matches!(controller.is_started(), Ok(true)) {

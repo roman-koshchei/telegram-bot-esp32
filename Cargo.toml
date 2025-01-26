@@ -69,6 +69,7 @@ serde = { version = "1.0.217", default-features = false, features = [
   "derive",
   "alloc",
 ] }
+embedded-nal-async = "0.8.0"
 
 [profile.dev]
 # Rust debug is too slow.

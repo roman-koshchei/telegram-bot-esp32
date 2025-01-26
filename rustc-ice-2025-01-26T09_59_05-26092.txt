@@ -1,0 +1,46 @@
+thread 'rustc' panicked at compiler\rustc_middle\src\query\on_disk_cache.rs:729:21:
+Failed to convert DefPathHash DefPathHash(Fingerprint(11571789843506079437, 8278272090622164076))
+stack backtrace:
+   0:     0x7ff9df81c9a6 - _rdl_alloc_zeroed
+   1:     0x7ff9df7e155e - std::backtrace::Backtrace::force_capture::h8070e5385386938b
+   2:     0x7ff9df7e14ba - std::backtrace::Backtrace::force_capture::h8070e5385386938b
+   3:     0x7ff9dc33b7b8 - <tracing_subscriber[d21cbe7626b9977f]::fmt::format::Writer>::write_fmt
+   4:     0x7ff9df7e3184 - std::panicking::rust_panic_with_hook::hdc0112be8ee34d63
+   5:     0x7ff9df803e09 - <std::sys_common::process::CommandEnvs as core::iter::traits::iterator::Iterator>::next::h304a12e348885602
+   6:     0x7ff9df8028bf - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h6de5e1f86e4fb6bf
+   7:     0x7ff9df7e2cbe - rust_begin_unwind
+   8:     0x7ff9e2062e01 - core::panicking::panic_fmt::h9d7c90a4f0ad32e7
+   9:     0x7ff9df251073 - <rustc_middle[c1a71ca6186d4c37]::ty::print::pretty::PrintClosureAsImpl as core[e154005f70407713]::fmt::Display>::fmt
+  10:     0x7ff9df2599b0 - <rustc_middle[c1a71ca6186d4c37]::query::on_disk_cache::CacheDecoder as rustc_span[efcc7bb3fd9e159d]::SpanDecoder>::decode_span
+  11:     0x7ff9df27a048 - <rustc_middle[c1a71ca6186d4c37]::query::on_disk_cache::CacheEncoder as rustc_serialize[98437fb8dd819e7]::serialize::Encoder>::emit_raw_bytes
+  12:     0x7ff9df1f7efa - <rustc_middle[c1a71ca6186d4c37]::traits::DynCompatibilityViolation>::spans
+  13:     0x7ff9df27398d - <rustc_middle[c1a71ca6186d4c37]::query::on_disk_cache::CacheEncoder as rustc_serialize[98437fb8dd819e7]::serialize::Encoder>::emit_raw_bytes
+  14:     0x7ff9df257d66 - <rustc_middle[c1a71ca6186d4c37]::query::on_disk_cache::OnDiskCache>::load_side_effects
+  15:     0x7ff9de06aa55 - <rustc_span[efcc7bb3fd9e159d]::def_id::LocalDefId as rustc_query_impl[7d7caa2984d1675]::profiling_support::SpecIntoSelfProfilingString>::spec_to_self_profile_string
+  16:     0x7ff9de069e9c - <rustc_span[efcc7bb3fd9e159d]::def_id::LocalDefId as rustc_query_impl[7d7caa2984d1675]::profiling_support::SpecIntoSelfProfilingString>::spec_to_self_profile_string
+  17:     0x7ff9de0c9eae - <rustc_span[efcc7bb3fd9e159d]::def_id::LocalDefId as rustc_query_impl[7d7caa2984d1675]::profiling_support::SpecIntoSelfProfilingString>::spec_to_self_profile_string
+  18:     0x7ff9ddf9539b - <rustc_span[efcc7bb3fd9e159d]::def_id::LocalDefId as rustc_query_impl[7d7caa2984d1675]::profiling_support::SpecIntoSelfProfilingString>::spec_to_self_profile_string
+  19:     0x7ff9dcbd72e6 - <rustc_hir_analysis[cc928f6f1a816]::errors::wrong_number_of_generic_args::WrongNumberOfGenericArgs>::create_error_message
+  20:     0x7ff9dcd8a715 - <rustc_hir_analysis[cc928f6f1a816]::coherence::inherent_impls_overlap::RegionId as core[e154005f70407713]::fmt::Debug>::fmt
+  21:     0x7ff9dcb7dfac - rustc_hir_analysis[cc928f6f1a816]::check_crate
+  22:     0x7ff9dc56c898 - rustc_interface[acdc646543c77e48]::passes::analysis
+  23:     0x7ff9ddef940e - rustc_query_impl[7d7caa2984d1675]::plumbing::query_key_hash_verify_all
+  24:     0x7ff9ddf0cf38 - rustc_query_impl[7d7caa2984d1675]::plumbing::query_key_hash_verify_all
+  25:     0x7ff9de0f81ca - <rustc_span[efcc7bb3fd9e159d]::def_id::LocalDefId as rustc_query_impl[7d7caa2984d1675]::profiling_support::SpecIntoSelfProfilingString>::spec_to_self_profile_string
+  26:     0x7ff9ddf81c6f - <rustc_span[efcc7bb3fd9e159d]::def_id::LocalDefId as rustc_query_impl[7d7caa2984d1675]::profiling_support::SpecIntoSelfProfilingString>::spec_to_self_profile_string
+  27:     0x7ff9dc3a32ca - <rustc_middle[c1a71ca6186d4c37]::ty::SymbolName as core[e154005f70407713]::fmt::Debug>::fmt
+  28:     0x7ff9dc37f603 - <rustc_middle[c1a71ca6186d4c37]::ty::SymbolName as core[e154005f70407713]::fmt::Debug>::fmt
+  29:     0x7ff9dc3b8795 - <rustc_middle[c1a71ca6186d4c37]::ty::SymbolName as core[e154005f70407713]::fmt::Debug>::fmt
+  30:     0x7ff9dc32eadb - rustc_driver_impl[d567909259af83f6]::main
+  31:     0x7ff9dc3ad8a5 - <rustc_middle[c1a71ca6186d4c37]::ty::SymbolName as core[e154005f70407713]::fmt::Debug>::fmt
+  32:     0x7ff9df80406d - std::sys::pal::windows::thread::Thread::new::h6e22fabb734a5771
+  33:     0x7ffa92c8259d - BaseThreadInitThunk
+  34:     0x7ffa9320af38 - RtlUserThreadStart
+
+
+rustc version: 1.84.0-nightly (b0bd11bcc 2025-01-10) (1.84.0.0)
+platform: x86_64-pc-windows-msvc
+
+query stack during panic:
+#0 [analysis] running analysis passes on this crate
+end of query stack

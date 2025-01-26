@@ -14,7 +14,7 @@ where
     response_buffer: [u8; 8196],
 }
 
-pub const BASE_URL: &str = "https://api.telegram.org";
+pub const HOSTNAME: &str = "https://api.telegram.org";
 
 impl<'a, C> Client<'a, C>
 where
@@ -34,7 +34,7 @@ where
         let path = format!("/bot{}/sendMessage", self.bot_token);
 
         let mut body_buffer = [0; 2048];
-        let size = serde_json_core::ser::to_slice(
+        let _ = serde_json_core::ser::to_slice(
             &SendMessageBody {
                 chat_id: self.chat_id,
                 text,
@@ -44,7 +44,7 @@ where
             &mut body_buffer,
         )
         .expect("Body Buffer is too small"); // TODO: rework without panic
-        // info!("TG: send_message request body size: {}", size);
+                                             // info!("TG: send_message request body size: {}", size);
 
         let res = self
             .http

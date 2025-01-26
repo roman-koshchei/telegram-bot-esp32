@@ -16,6 +16,7 @@
     "COEX",
     "dhcpv",
     "heapless",
+    "repr",
     "reqwless",
     "Uninit"
   ]
