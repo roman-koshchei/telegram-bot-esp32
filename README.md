@@ -25,7 +25,7 @@ Commands:
 - [x] /ip - returns public ip of my router
 - [x] /led - toggle blinking led on esp32
 - [x] /echo {message} - send back message
-- [ ] /remind {minutes} {message} - send message in x seconds/minutes/hours
+- [x] /remind {minutes} {message} - send message in x seconds/minutes/hours
 
 Whenever we receive command we should blink 3 times the led and then return into initial state.
 So steps look like this:
