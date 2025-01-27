@@ -5,6 +5,7 @@
 
 use core::str::FromStr;
 
+use circular_stack::CircularStack;
 use embassy_executor::Spawner;
 use embassy_net::{
     dns::DnsSocket,
@@ -24,6 +25,7 @@ use load_dotenv::load_dotenv;
 use reqwless::client::TlsConfig;
 use telegram::SendMessageError;
 
+mod circular_stack;
 mod telegram;
 extern crate alloc;
 
@@ -157,7 +159,7 @@ async fn main(spawner: Spawner) {
 
     let mut led = gpio::Output::new(peripherals.GPIO2, gpio::Level::Low);
 
-    let mut reminders = Vec::<(Instant, heapless::String<256>), 10>::new();
+    let mut reminders = CircularStack::<(Instant, heapless::String<256>), 10>::new();
 
     let mut offset: i64 = 0;
     loop {
