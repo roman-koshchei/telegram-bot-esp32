@@ -4,7 +4,8 @@ use embedded_nal_async::{Dns, TcpConnect};
 use reqwless::{
     client::{HttpClient, HttpResource},
     headers::ContentType,
-    request::RequestBuilder as _, response::StatusCode,
+    request::RequestBuilder as _,
+    response::StatusCode,
 };
 use serde_json_core as _;
 

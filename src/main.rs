@@ -5,13 +5,14 @@
 
 use core::str::FromStr;
 
+use alloc::borrow::ToOwned;
 use embassy_executor::Spawner;
 use embassy_net::{
     dns::DnsSocket,
     tcp::client::{TcpClient, TcpClientState},
     DhcpConfig, Runner, StackResources,
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, gpio};
 use esp_mbedtls::Tls;
@@ -19,6 +20,7 @@ use esp_wifi::{
     wifi::{self, WifiDevice, WifiStaDevice},
     EspWifiController,
 };
+use heapless::Vec;
 use load_dotenv::load_dotenv;
 use reqwless::client::TlsConfig;
 use telegram::SendMessageError;
@@ -156,23 +158,45 @@ async fn main(spawner: Spawner) {
 
     let mut led = gpio::Output::new(peripherals.GPIO2, gpio::Level::Low);
 
+    let mut reminders = Vec::<(Instant, heapless::String<256>), 10>::new();
+
     let mut offset: i64 = 0;
-    let mut updates_failed_in_row = 0;
     loop {
-        if updates_failed_in_row > 10 {
-            break;
+        let now = Instant::now();
+
+        let mut reminder_i = 0;
+        let mut reminders_len = reminders.len();
+        while reminder_i < reminders_len {
+            let reminder = &reminders[reminder_i];
+
+            if now > reminder.0 {
+                if let Err(err) = tg.send_message(reminder.1.as_str(), false).await {
+                    match err {
+                        SendMessageError::ReqwlessError(_) => {
+                            // try to resend next time
+                            reminder_i += 1;
+                        }
+                        _ => {
+                            reminders.swap_remove(reminder_i);
+                            reminders_len = reminders.len();
+                        }
+                    }
+                } else {
+                    reminders.swap_remove(reminder_i);
+                    reminders_len = reminders.len();
+                }
+            } else {
+                reminder_i += 1;
+            }
         }
+
         Timer::after_millis(500).await;
 
         // log::info!("MAIN LOOP: Getting updates");
         let updates = match tg.get_updates(offset).await {
-            Ok(value) => {
-                updates_failed_in_row = 0;
-                value
-            }
+            Ok(value) => value,
             Err(_) => {
                 log::error!("MAIN LOOP: Can't get updates");
-                updates_failed_in_row += 1;
                 continue;
             }
         };
@@ -187,14 +211,19 @@ async fn main(spawner: Spawner) {
                     } else if command == "ip" {
                         log::info!("COMMAND: /ip");
 
-                        if let Err(err) = tg.send_message(&alloc::format!("IP: <span class='tg-spoiler'>{}</span>", ip), true).await {
+                        if let Err(err) = tg
+                            .send_message(
+                                &alloc::format!("IP: <span class='tg-spoiler'>{}</span>", ip),
+                                true,
+                            )
+                            .await
+                        {
                             match err {
                                 SendMessageError::TooSmallBodyBuffer => {
                                     log::error!("send_message buffer should be increased")
                                 }
                                 SendMessageError::StatusCodeIsNotSuccessful(status) => {
-                                        log::error!("Status code isn't successful: {}", status.0);
-
+                                    log::error!("Status code isn't successful: {}", status.0);
                                 }
                                 SendMessageError::ReqwlessError(err) => {
                                     if let reqwless::Error::ConnectionAborted = err {
@@ -203,7 +232,7 @@ async fn main(spawner: Spawner) {
                                 }
                             }
                         };
-                    } else if let Some(content) = command.strip_prefix("echo") {
+                    } else if let Some(content) = command.strip_prefix("echo ") {
                         log::info!("COMMAND: /echo");
 
                         if let Err(err) = tg.send_message(content, false).await {
@@ -211,14 +240,40 @@ async fn main(spawner: Spawner) {
                                 SendMessageError::TooSmallBodyBuffer => {
                                     log::error!("send_message buffer should be increased")
                                 }
-                      SendMessageError::StatusCodeIsNotSuccessful(status) => {
-                                        log::error!("Status code isn't successful: {}", status.0);
-
+                                SendMessageError::StatusCodeIsNotSuccessful(status) => {
+                                    log::error!("Status code isn't successful: {}", status.0);
                                 }
                                 SendMessageError::ReqwlessError(err) => {
                                     if let reqwless::Error::ConnectionAborted = err {
                                         log::error!("We need to reconnect");
                                     }
+                                }
+                            }
+                        }
+                    } else if let Some(arguments) = command.strip_prefix("remind ") {
+                        log::info!("COMMAND: /remind");
+
+
+                        if let Some((minutes_str, message_str)) = arguments.split_once(' ') {
+                            // Try to parse the first part as a number
+                            match minutes_str.parse::<u32>() {
+                                Ok(minutes) => {
+                                    match heapless::String::<256>::from_str(message_str) {
+                                        Ok(x) => {
+                                            // TODO: remake into circular stack
+                                            let _ = reminders.push((
+                                                Instant::now()
+                                                    + Duration::from_secs((minutes * 60).into()),
+                                                x,
+                                            ));
+                                        }
+                                        Err(_) => {
+                                            let _ = tg.send_message("Maximum allowed message size is 255 characters",false).await;
+                                        }
+                                    };
+                                }
+                                Err(_) => {
+                                    let _ = tg.send_message("First argument to /remind is amount of minutes, which is positive integer",false).await;
                                 }
                             }
                         }
@@ -236,11 +291,11 @@ async fn blink(output: &mut gpio::Output<'_>) {
     let level = output.output_level();
 
     output.set_low();
-    Timer::after_millis(50).await;
-    output.set_high();
     Timer::after_millis(100).await;
+    output.set_high();
+    Timer::after_millis(200).await;
     output.set_low();
-    Timer::after_millis(50).await;
+    Timer::after_millis(100).await;
 
     output.set_level(level);
 }
