@@ -5,7 +5,6 @@
 
 use core::str::FromStr;
 
-use alloc::borrow::ToOwned;
 use embassy_executor::Spawner;
 use embassy_net::{
     dns::DnsSocket,
@@ -252,7 +251,6 @@ async fn main(spawner: Spawner) {
                         }
                     } else if let Some(arguments) = command.strip_prefix("remind ") {
                         log::info!("COMMAND: /remind");
-
 
                         if let Some((minutes_str, message_str)) = arguments.split_once(' ') {
                             // Try to parse the first part as a number

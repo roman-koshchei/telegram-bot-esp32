@@ -1,11 +1,8 @@
-use alloc::{format, string::ToString};
+use alloc::format;
 use embedded_nal_async::{Dns, TcpConnect};
 // use log;
 use reqwless::{
-    client::{HttpClient, HttpResource},
-    headers::ContentType,
-    request::RequestBuilder as _,
-    response::StatusCode,
+    client::HttpClient, headers::ContentType, request::RequestBuilder as _, response::StatusCode,
 };
 use serde_json_core as _;
 
@@ -107,7 +104,7 @@ where
         } else {
             let status = response.status;
             let body = response.body().read_to_end().await.unwrap();
-            let str_body = alloc::str::from_utf8(&body).unwrap();
+            let str_body = alloc::str::from_utf8(body).unwrap();
             log::error!("{}", str_body);
 
             Err(SendMessageError::StatusCodeIsNotSuccessful(status))
